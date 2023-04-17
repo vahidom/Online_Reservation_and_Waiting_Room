@@ -1,0 +1,15 @@
+{% extends "ShowQ/base.html" %}
+
+{% block body_block%}
+
+{% if patients_list %}
+    <ul>
+    {% for patient in patients_list %}
+        <li>{{ patient.first_name }}, {{ patient.last_name }}</li>
+    {% endfor %}
+    </ul>
+{% else %}
+    <p>No Patients are available.</p>
+{% endif %}
+
+{% endblock %}
