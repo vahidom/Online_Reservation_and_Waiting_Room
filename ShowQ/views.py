@@ -1,12 +1,17 @@
 from django.shortcuts import render, redirect
 from .forms import NewUserForm, ProfileForm
 from django.contrib.auth import login, logout, authenticate
-from django.http import HttpResponseRedirect, HttpResponse
-from django.urls import reverse
+from django.http import HttpResponseRedirect, HttpResponse, HttpResponseForbidden
+from django.urls import reverse, reverse_lazy
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.contrib.auth.models import User
+from ShowQ.models import Doctor, Schedule, AppointmentsModel
+from ShowQ.forms import AppointmentsForm
+from django.views import generic, View
+import datetime
+
 
 # Create your views here.
 def index(request):
@@ -25,10 +30,68 @@ def plist(request):
     context = {'patients_list': patients_list}
     return render(request, 'ShowQ/plist.html', context)
 
-def show_date_time(request):
-    patients_list = User.objects.all
-    context = {'patients_list': patients_list}
-    return render(request, 'ShowQ/show_date_time.html', context)
+class DocListView(generic.ListView):
+    model = Doctor
+
+class ScheduleDetailView(generic.DetailView):
+    """
+    A detail view part of the appointments view to show the detail of available
+    time for each reservation
+    """
+    model = Schedule
+    def date_range(self, start_date: datetime.date, end_date: datetime.date):
+        days = int((end_date - start_date).days)+1
+        for n in range(days):
+            yield start_date + datetime.timedelta(n)
+    
+    def time_range(self, start_time:datetime.time, end_time: datetime.time, day: datetime.date, period:int):
+        date_time = datetime.datetime.combine(day, start_time)
+        for i in range(1,10):
+            yield date_time + datetime.timedelta(minutes=period*i)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        startDate = self.object.start_date
+        endDate = self.object.end_date
+        startTime = self.object.start_time
+        endtTime = self.object.end_time
+        datetimelist = [ [time for time in self.time_range(startTime,endtTime,day, 5)] 
+                        for day in self.date_range(startDate, endDate)]
+        print("IN GET METHOD", datetimelist[0][0])
+        context.update({'datetimelist': datetimelist})
+        return context
+        
+class AppointmentsCreateView(generic.CreateView):
+    """
+    A crate view part of the appointments view to manage the user creating reservation time
+    """
+    template_name = "ShowQ/schedule_detail.html"
+    form_class = AppointmentsForm
+    model =  AppointmentsModel
+    success_url = reverse_lazy('doclist')
+
+    def post(self, request, *args, **kwargs):
+        
+        if not request.user.is_authenticated:
+            return HttpResponseForbidden()
+        self.object = None
+        reservation_model = AppointmentsModel(created_by=request.user, doctor= Doctor.objects.get(pk=self.kwargs['pk']),
+                                               date_time= datetime.datetime.strptime(request.POST['apptime'], '%Y-%m-%d %H:%M:%S'))
+        reservation_model.save()
+        return super().post(request, *args, **kwargs)
+
+class AppointmentsView(View):
+    """
+    This view bring the DetailView and FormView defined above together
+    """
+    def get(self, request, *args, **kwargs):
+        view = ScheduleDetailView.as_view()
+        return view(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        view = AppointmentsCreateView.as_view()
+        return view(request, *args, **kwargs)
+    
 
 def register_request(request):
   registered = False

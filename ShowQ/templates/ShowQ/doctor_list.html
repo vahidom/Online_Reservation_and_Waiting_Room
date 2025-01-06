@@ -1,0 +1,21 @@
+{% extends "ShowQ/base.html" %}
+
+{% block body_block%}
+
+<div class="row">
+    <div class="row row-cols-1 row-cols-md-6 g-4">
+      {% if doctor_list %}
+          {% for doctor in doctor_list %}       
+            <div class="card" style="width: 18rem;">
+              <img src="..." class="card-img-top" alt="No Photo">
+              <div class="card-body">
+                <h5 class="card-title">{{doctor}}</h5>
+                <p class="card-text">About</p>
+                <a href="{% url 'ShowQ:schedule' doctor.id %}" class="btn btn-primary">Make Appointment</a>
+              </div>
+            </div>
+          {% endfor %}
+      {% endif %}
+    </div>
+  </div> 
+{% endblock %}

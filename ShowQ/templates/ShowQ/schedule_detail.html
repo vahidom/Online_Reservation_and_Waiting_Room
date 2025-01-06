@@ -1,0 +1,65 @@
+{% extends "ShowQ/base.html" %}
+{% block pagetitle %} Schedule for Dr. {{schedule.doctor}} {% endblock %}
+
+{% block body_block %}
+    {% if schedule %}
+    <div class="container text-center">
+        <div class="row justify-content-md-center gy-3">
+            <div class="col-12">
+                From Date : {{schedule.start_date|date:"l" }} - {{schedule.start_date}}
+                To : {{schedule.end_date|date:"l"}} - {{schedule.end_date}}
+            <br>
+                From Time : {{schedule.start_time}} To : {{schedule.end_time}}
+            <br>
+            </div>
+            <div class="col-12"></div>
+        </div>
+    </div>
+        
+        <form action="" method="post">
+            {% csrf_token %}
+            <div id="carouselExample" class="carousel carousel-dark slide">
+                <div class="carousel-inner">
+                    <div class="carousel-item active">
+                        <div class="row justify-content-md-center">
+                            {% for day in datetimelist %}
+                                <div class="col col-xl-2">
+                                    <div class="card mb-3" style="width: 15rem;">
+                                        <div class="card-header">
+                                            {{day.0|date:"l j F o"}}
+                                        </div>
+                                        {% for time in day %}
+                                            <ul class="list-group list-group-flush">
+                                                <li class="list-group-item">   
+                                                    <input class="form-check-input me-1" type="radio" name="apptime" value="{{ time|date:'Y-m-d H:i:s' }}" id="{{time}}">
+                                                    <label class="form-check-label stretched-link" for="{{time}}">{{time|time:"G:i:s" }}</label>
+                                                </li>
+                                            </ul>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% if forloop.counter|divisibleby:4 and not forloop.last %}
+                                    </div>
+                                    </div>
+                                    <div class="carousel-item">
+                                    <div class="row justify-content-md-center">
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <div class="d-grid gap-2 col-6 mx-auto">
+                    <input class="btn btn-primary btn-lg" type="submit" value="تایید">
+                </div>
+                <button class="carousel-control-prev" type="button" data-bs-target="#carouselExample" data-bs-slide="prev">
+                    <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                    <span class="visually-hidden">Previous</span>
+                </button>
+                <button class="carousel-control-next" type="button" data-bs-target="#carouselExample" data-bs-slide="next">
+                    <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                    <span class="visually-hidden">Next</span>
+                </button>
+            </div>    
+        </form>
+    {% endif %} 
+{% endblock %}
