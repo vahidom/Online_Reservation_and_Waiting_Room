@@ -1,5 +1,5 @@
 from django import forms
-from .models import Profile
+from .models import Profile, AppointmentsModel
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 
@@ -21,3 +21,9 @@ class ProfileForm(forms.ModelForm):
     class Meta:
         model = Profile
         fields = ("age", "gender", "address", "phonenumber", "mellicod", "profile_pic") 
+        
+
+class AppointmentsForm(forms.ModelForm):
+    class Meta:
+         model = AppointmentsModel
+         fields = ["created_by", "doctor", "date_time"]
