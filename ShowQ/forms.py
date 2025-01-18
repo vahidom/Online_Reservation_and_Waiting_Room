@@ -2,6 +2,7 @@ from django import forms
 from .models import Profile, AppointmentsModel
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
+from collections import defaultdict
 
 class NewUserForm(UserCreationForm):
 	password1 = forms.CharField(widget=forms.PasswordInput())
@@ -26,4 +27,4 @@ class ProfileForm(forms.ModelForm):
 class AppointmentsForm(forms.ModelForm):
     class Meta:
          model = AppointmentsModel
-         fields = ["created_by", "doctor", "date_time"]
+         fields = ["user", "doctor", "date_time"]

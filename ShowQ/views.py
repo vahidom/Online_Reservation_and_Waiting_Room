@@ -1,16 +1,17 @@
 from django.shortcuts import render, redirect
-from .forms import NewUserForm, ProfileForm
+from .forms import NewUserForm, ProfileForm, AppointmentsForm
 from django.contrib.auth import login, logout, authenticate
-from django.http import HttpResponseRedirect, HttpResponse, HttpResponseForbidden
+from django.http import HttpResponseRedirect, HttpResponse
 from django.urls import reverse, reverse_lazy
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.contrib.auth.models import User
-from ShowQ.models import Doctor, Schedule, AppointmentsModel
-from ShowQ.forms import AppointmentsForm
-from django.views import generic, View
-import datetime
+from ShowQ.models import Doctor, AppointmentsModel
+from django.views import generic
+from .utils import generate_available_times
+from django.utils.timezone import make_aware
+
 
 
 # Create your views here.
@@ -33,65 +34,54 @@ def plist(request):
 class DocListView(generic.ListView):
     model = Doctor
 
-class ScheduleDetailView(generic.DetailView):
-    """
-    A detail view part of the appointments view to show the detail of available
-    time for each reservation
-    """
-    model = Schedule
-    def date_range(self, start_date: datetime.date, end_date: datetime.date):
-        days = int((end_date - start_date).days)+1
-        for n in range(days):
-            yield start_date + datetime.timedelta(n)
-    
-    def time_range(self, start_time:datetime.time, end_time: datetime.time, day: datetime.date, period:int):
-        date_time = datetime.datetime.combine(day, start_time)
-        for i in range(1,10):
-            yield date_time + datetime.timedelta(minutes=period*i)
+class AppointmentCreateView(generic.CreateView):
+
+    model = AppointmentsModel
+    form_class = AppointmentsForm
+    template_name = 'ShowQ/appointment_create_form.html'
+    success_url = reverse_lazy('ShowQ:doclist')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        startDate = self.object.start_date
-        endDate = self.object.end_date
-        startTime = self.object.start_time
-        endtTime = self.object.end_time
-        datetimelist = [ [time for time in self.time_range(startTime,endtTime,day, 5)] 
-                        for day in self.date_range(startDate, endDate)]
-        print("IN GET METHOD", datetimelist[0][0])
-        context.update({'datetimelist': datetimelist})
+        doctor = Doctor.objects.get(pk = self.kwargs['pk'])
+        initial_data = {
+        "user": self.request.user if self.request.user.is_authenticated else "Guest",
+        "doctor": doctor,
+        }
+        # Create form with initial values
+        form = self.form_class(initial=initial_data)
+
+        schedules = doctor.schedules.all()
+        available_times = {}
+        # Combine available times for all schedules
+        for schedule in schedules:
+            schedule_times = generate_available_times(schedule)
+            for date, times in schedule_times.items():
+                if date not in available_times:
+                    available_times[date] = []
+                available_times[date].extend(times)
+
+        # Sort times for each date
+        for date in available_times:
+            available_times[date] = sorted(available_times[date])
+        
+        context.update({'available_times': available_times, 'form': form, 'doctor': doctor})
         return context
-        
-class AppointmentsCreateView(generic.CreateView):
-    """
-    A crate view part of the appointments view to manage the user creating reservation time
-    """
-    template_name = "ShowQ/schedule_detail.html"
-    form_class = AppointmentsForm
-    model =  AppointmentsModel
-    success_url = reverse_lazy('doclist')
-
-    def post(self, request, *args, **kwargs):
-        
-        if not request.user.is_authenticated:
-            return HttpResponseForbidden()
-        self.object = None
-        reservation_model = AppointmentsModel(created_by=request.user, doctor= Doctor.objects.get(pk=self.kwargs['pk']),
-                                               date_time= datetime.datetime.strptime(request.POST['apptime'], '%Y-%m-%d %H:%M:%S'))
-        reservation_model.save()
-        return super().post(request, *args, **kwargs)
-
-class AppointmentsView(View):
-    """
-    This view bring the DetailView and FormView defined above together
-    """
-    def get(self, request, *args, **kwargs):
-        view = ScheduleDetailView.as_view()
-        return view(request, *args, **kwargs)
-
-    def post(self, request, *args, **kwargs):
-        view = AppointmentsCreateView.as_view()
-        return view(request, *args, **kwargs)
     
+    def form_valid(self, form):
+      doctor = form.cleaned_data['doctor']
+      date_time = form.cleaned_data['date_time']
+      messages.success(self.request, f"Appointment confirmed with Dr. {doctor} on {date_time}")
+      return super(AppointmentCreateView,self).form_valid(form)
+
+
+    def form_invalid(self, form):
+        # Re-render the form with errors
+        if self.request.user.is_authenticated :
+          messages.error(self.request, "There was an error with your submission. Please check your input.")
+        else:
+           messages.error(self.request, "Please Log In first")
+        return self.render_to_response(self.get_context_data(form=form))
 
 def register_request(request):
   registered = False
