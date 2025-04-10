@@ -71,17 +71,20 @@ class AppointmentCreateView(generic.CreateView):
     def form_valid(self, form):
       doctor = form.cleaned_data['doctor']
       date_time = form.cleaned_data['date_time']
+      if AppointmentsModel.objects.filter(doctor=doctor, date_time=date_time).exists():
+            messages.error(self.request, "That time slot is already taken")
+            return self.render_to_response(self.get_context_data(form=form))
       messages.success(self.request, f"Appointment confirmed with Dr. {doctor} on {date_time}")
       return super(AppointmentCreateView,self).form_valid(form)
 
 
     def form_invalid(self, form):
-        # Re-render the form with errors
-        if self.request.user.is_authenticated :
-          messages.error(self.request, "There was an error with your submission. Please check your input.")
-        else:
-           messages.error(self.request, "Please Log In first")
-        return self.render_to_response(self.get_context_data(form=form))
+      # Re-render the form with errors
+      if self.request.user.is_authenticated :
+        messages.error(self.request, "There was an error with your submission. Please check your input.")
+      else:
+        messages.error(self.request, "Please Log In first")
+      return self.render_to_response(self.get_context_data(form=form))
 
 def register_request(request):
   registered = False

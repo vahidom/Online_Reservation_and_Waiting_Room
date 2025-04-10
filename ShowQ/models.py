@@ -39,7 +39,7 @@ class Schedule(models.Model):
     end_date = models.DateField()
     end_time = models.TimeField()
     days_of_week = models.BooleanField()
-    appointment_length = models.IntegerField(help_text="Duration of each appointment in minutes")
+    appointment_length = models.PositiveIntegerField(help_text="Duration of each appointment in minutes")
 
     def __str__(self):
         return f"{self.doctor.name}'s Schedule from {self.start_date} to {self.end_date}"
