@@ -1,7 +1,7 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from .forms import NewUserForm, ProfileForm, AppointmentsForm
 from django.contrib.auth import login, logout, authenticate
-from django.http import HttpResponseRedirect, HttpResponse
+from django.http import HttpResponseRedirect, HttpResponse, JsonResponse
 from django.urls import reverse, reverse_lazy
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -10,7 +10,8 @@ from django.contrib.auth.models import User
 from ShowQ.models import Doctor, AppointmentsModel
 from django.views import generic
 from .utils import generate_available_times
-from django.utils.timezone import make_aware
+from django.utils.timezone import make_aware, localtime
+import datetime
 
 
 
@@ -41,50 +42,89 @@ class AppointmentCreateView(generic.CreateView):
     template_name = 'ShowQ/appointment_create_form.html'
     success_url = reverse_lazy('ShowQ:doclist')
 
+    def get_initial(self):
+      return {'doctor': get_object_or_404(Doctor, pk=self.kwargs['pk'])}
+        # initial = super().get_initial()
+        # initial['doctor'] = get_object_or_404(Doctor, pk=self.kwargs['pk'])
+        # if self.request.user.is_authenticated:
+        #     initial['user'] = self.request.user
+        # return initial
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['doctor'] = get_object_or_404(Doctor, pk=self.kwargs['pk'])
+        #kwargs['user'] = self.request.user if self.request.user.is_authenticated else 'Guest'
+        return kwargs
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        doctor = Doctor.objects.get(pk = self.kwargs['pk'])
-        initial_data = {
-        "user": self.request.user if self.request.user.is_authenticated else "Guest",
-        "doctor": doctor,
-        }
+        doctor = get_object_or_404(Doctor, pk=self.kwargs['pk'])
+        # initial_data = {
+        # "user": self.request.user if self.request.user.is_authenticated else "Guest",
+        # "doctor": doctor,
+        # }
         # Create form with initial values
-        form = self.form_class(initial=initial_data)
+        #form = self.form_class(initial=initial_data)
 
         schedules = doctor.schedules.all()
-        available_times = {}
-        # Combine available times for all schedules
+        available_dates = set()
         for schedule in schedules:
-            schedule_times = generate_available_times(schedule)
-            for date, times in schedule_times.items():
-                if date not in available_times:
-                    available_times[date] = []
-                available_times[date].extend(times)
+            slots = generate_available_times(schedule)
+            available_dates.update(slots.keys())        
 
-        # Sort times for each date
-        for date in available_times:
-            available_times[date] = sorted(available_times[date])
-        
-        context.update({'available_times': available_times, 'form': form, 'doctor': doctor})
+        days = sorted([d.strftime('%Y-%m-%d') for d in available_dates])
+        context['days'] = days
+        context['doctor'] = doctor
+        context['today'] = datetime.date.today().strftime('%Y-%m-%d')
         return context
     
     def form_valid(self, form):
+      selected_time = self.request.POST.get('selected_time')
+
+      try:
+        date_str, time_str = selected_time.split()
+        combined = datetime.datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+        time_slot = make_aware(combined)
+      except Exception:
+        return JsonResponse({'success': False, 'error': "Invalid datetime format"}, status=400)
+
       doctor = form.cleaned_data['doctor']
-      date_time = form.cleaned_data['date_time']
-      if AppointmentsModel.objects.filter(doctor=doctor, date_time=date_time).exists():
-            messages.error(self.request, "That time slot is already taken")
-            return self.render_to_response(self.get_context_data(form=form))
-      messages.success(self.request, f"Appointment confirmed with Dr. {doctor} on {date_time}")
-      return super(AppointmentCreateView,self).form_valid(form)
+      if AppointmentsModel.objects.filter(doctor=doctor, date_time=time_slot).exists():
+            return JsonResponse({'success': False, 'error': "That time slot is already taken"}, status=409)
+
+      appointment = form.save(commit=False)
+      appointment.user = self.request.user
+      appointment.date_time = time_slot
+      appointment.save()
+
+      return JsonResponse({'success': True, 'message': "Appointment booked!"})
 
 
     def form_invalid(self, form):
-      # Re-render the form with errors
-      if self.request.user.is_authenticated :
-        messages.error(self.request, "There was an error with your submission. Please check your input.")
-      else:
-        messages.error(self.request, "Please Log In first")
-      return self.render_to_response(self.get_context_data(form=form))
+        errors = {field: [str(err) for err in errs] for field, errs in form.errors.items()}
+        return JsonResponse({'success': False, 'errors': errors}, status=400)
+
+# AJAX view to fetch available & reserved times for a day
+def load_times_for_day(request, doctor_id, day):
+    print('Load times for day View is runnign')
+    doctor = get_object_or_404(Doctor, pk=doctor_id)
+    schedules = doctor.schedules.all()
+    selected_date = datetime.datetime.strptime(day, '%Y-%m-%d').date()
+
+    available = []
+    for schedule in schedules:
+        slot_map = generate_available_times(schedule)
+        slots = slot_map.get(selected_date, [])
+        available.extend([t.strftime('%H:%M') for t in slots])
+
+    reserved_qs = AppointmentsModel.objects.filter(doctor=doctor, date_time__date=selected_date)
+    reserved = [localtime(a.date_time).strftime('%H:%M') for a in reserved_qs]
+    print('Available Times:', available)
+    print('Reserved Time:', reserved)
+    return JsonResponse({
+        'available': sorted(available),
+        'reserved': reserved
+    })
 
 def register_request(request):
   registered = False

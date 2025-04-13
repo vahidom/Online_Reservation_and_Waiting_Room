@@ -1,8 +1,171 @@
 {% extends "ShowQ/base.html" %}
+{% load static %}
 {% block pagetitle %} Schedule for Dr. {{doctor}} {% endblock %}
 
 {% block body_block %}
-    {% if available_times %}
+
+<div class="container mt-5">
+    <h2 class="text-center">رزرو وقت برای دکتر {{ doctor.name }}</h2>
+
+    <div class="d-flex align-items-center justify-content-center my-4">
+        <button class="btn btn-outline-secondary me-2" id="prevBtn">←</button>
+        <div class="d-flex overflow-hidden" style="width: 100%; max-width: 700px;">
+            <div id="dateStrip" class="d-flex transition-all" style="transition: transform 0.3s ease;">
+                {% for day in days %}
+                    <div class="date-box btn mx-1 {% if day < today %}disabled{% endif %}"
+                         data-day="{{ day }}"
+                         data-doctor="{{ doctor.id }}"
+                         style="min-width: 90px; opacity: {% if day < today %}0.5{% else %}1{% endif %}">
+                        {{ day }}
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+        <button class="btn btn-outline-secondary ms-2" id="nextBtn">→</button>
+    </div>
+
+    <div class="mt-4 text-center">
+        <h5>زمان‌های موجود</h5>
+        <div id="times" class="d-flex flex-wrap justify-content-center"></div>
+    </div>
+
+    <form id="bookingForm" method="post" class="text-center mt-4">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <input type="hidden" name="selected_day" id="selectedDay">
+        <input type="hidden" name="selected_time" id="selectedTime">
+        <button type="submit" class="btn btn-primary">رزرو وقت</button>
+    </form>
+
+    <div id="form-response" class="mt-3 text-center"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const strip = document.getElementById('dateStrip');
+    const dayBoxes = [...strip.querySelectorAll('.date-box')];
+    const timesDiv = document.getElementById('times');
+    const selectedDayInput = document.getElementById('selectedDay');
+    const selectedTimeInput = document.getElementById('selectedTime');
+    const responseBox = document.getElementById('form-response');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+
+    let visibleCount = 7;
+    let startIndex = 0;
+    const boxWidth = 100; // Estimated width incl. margin
+
+    // Scroll strip to show a specific window
+    function renderWindow() {
+        const offset = startIndex * boxWidth;
+        strip.style.transform = `translateX(-${offset}px)`;
+    }
+
+    prevBtn.addEventListener('click', () => {
+        if (startIndex > 0) {
+            startIndex--;
+            renderWindow();
+        }
+    });
+
+    nextBtn.addEventListener('click', () => {
+        if (startIndex + visibleCount < dayBoxes.length) {
+            startIndex++;
+            renderWindow();
+        }
+    });
+
+    function loadTimes(day, doctorId) {
+        console.log("LoadTimes is running");
+        const baseUrl = "{% url 'ShowQ:ajax_load_times' 0 'day' %}";
+        const finalUrl = baseUrl
+            .replace("/0/", `/${doctorId}/`)
+            .replace("/day/", `/${day}/`);
+
+        fetch(finalUrl)
+            .then(res => res.json())
+            .then(data => {
+                timesDiv.innerHTML = '';
+                selectedDayInput.value = day;
+
+                data.available.forEach(time => {
+                    const isReserved = data.reserved.includes(time);
+                    const div = document.createElement('div');
+                    div.className = 'time-slot btn btn-outline-secondary m-1';
+                    div.innerText = time;
+
+                    if (isReserved) {
+                        div.classList.add('disabled');
+                    } else {
+                        div.onclick = () => {
+                            document.querySelectorAll('.time-slot').forEach(el => el.classList.remove('active'));
+                            div.classList.add('active');
+                            selectedTimeInput.value = `${day} ${time}`;
+                        };
+                    }
+
+                    timesDiv.appendChild(div);
+                });
+            });
+    }
+
+    // Handle day selection
+    strip.addEventListener('click', function (e) {
+        const target = e.target.closest('.date-box:not(.disabled)');
+        if (!target) return;
+
+        const day = target.dataset.day;
+        const doctorId = target.dataset.doctor;
+
+        document.querySelectorAll('.date-box').forEach(el => el.classList.remove('active'));
+        target.classList.add('active');
+        loadTimes(day, doctorId);
+    });
+
+    // 👉 Auto-focus to first 7 active dates
+    const firstActiveIndex = dayBoxes.findIndex(box => !box.classList.contains('disabled'));
+    if (firstActiveIndex !== -1) {
+        // Set startIndex to that index
+        startIndex = firstActiveIndex;
+        renderWindow();
+
+        const firstBox = dayBoxes[firstActiveIndex];
+        firstBox.classList.add('active');
+        loadTimes(firstBox.dataset.day, firstBox.dataset.doctor);
+    }
+
+    // AJAX form submit (unchanged)
+    document.getElementById('bookingForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const form = e.target;
+        const formData = new FormData(form);
+
+        fetch("", {
+            method: "POST",
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            responseBox.innerHTML = '';
+            if (data.success) {
+                responseBox.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+                document.querySelectorAll('.time-slot.active').forEach(el => {
+                    el.classList.remove('active');
+                    el.classList.add('disabled');
+                });
+                form.reset();
+            } else {
+                let err = data.error || Object.values(data.errors).flat().join(', ');
+                responseBox.innerHTML = `<div class="alert alert-danger">${err}</div>`;
+            }
+        });
+    });
+});
+</script>
+
+    <!-- {% if available_times %}
         <form action="" method="post">
             {% csrf_token %}
             <div>
@@ -55,5 +218,5 @@
                 </button>
             </div>    
         </form>
-    {% endif %}
+    {% endif %} -->
 {% endblock %}
